@@ -236,18 +236,36 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
 
     print ("EntryAngle() is called.")
 
-
+    if inputModelNode == None:
+      return None
+    
+    if inputFiducialNode == None:
+      return None
+    
     nOfModels = inputModelNode.GetNumberOfChildrenNodes()
 
     for i in range(nOfModels):
-      model = inputModelNode.GetNthChildNode(i)
-      poly = model.GetAssociatedNode().GetPolyData()
+      
+      chnode = inputModelNode.GetNthChildNode(i)
+      if chnode == None:
+        continue
+      
+      mnode = chnode.GetAssociatedNode()
+      if mnode == None:
+        continue
+      
+      poly = mnode.GetPolyData()
+      if poly == None:
+        continue
+      
       points = vtk.vtkPoints()
       idList = vtk.vtkIdList()
       pos0 = [0.0, 0.0, 0.0]
       posN = [0.0, 0.0, 0.0]
+      
       inputFiducialNode.GetNthFiducialPosition(0, pos0)
       inputFiducialNode.GetNthFiducialPosition(12, posN)
+      
       traj = [posN[0]- pos0[0], posN[1]-pos0[1], posN[2]-pos0[2]]
       inter1= [0.0, 0.0, 0.0]
       inter2= [0.0, 0.0, 0.0]
@@ -258,9 +276,23 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
       inputFiducialNode.GetNthFiducialPosition(14, inter2)
       tolerance = 0.001
       bspTree.IntersectWithLine(inter1, inter2, tolerance, points, idList)
-      points.GetPoint(0)
+
+      if points.GetNumberOfPoints < 1:
+        continue
+      
+      #points.GetPoint(0)
+
+      if idList.GetNumberOfIds() < 1:
+        continue
+      
       cell0 = poly.GetCell(idList.GetId(0))
+      if cell0 == None:
+        continue
+      
       p0 = cell0.GetPoints()
+      if p0 == None:
+        continue
+      
       x0 = p0.GetPoint(1)[0]- p0.GetPoint(0)[0]
       y0 = p0.GetPoint(1)[1]- p0.GetPoint(0)[1]
       z0 = p0.GetPoint(1)[2]- p0.GetPoint(0)[2]
@@ -271,8 +303,10 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
       v1 = [x1, y1, z1]
       v0xv1 = np.cross(v0, v1)
       norm = math.sqrt(v0xv1[0]*v0xv1[0] + v0xv1[1]*v0xv1[1] + v0xv1[2]*v0xv1[2] )
+      
       normal = (1/norm)*v0xv1
       angle = vtk.vtkMath.AngleBetweenVectors(normal, traj)
+      
       print angle 
 
     
