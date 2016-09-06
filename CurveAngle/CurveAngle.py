@@ -75,6 +75,22 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(angleCollapsibleButton)
     angleFormLayout = qt.QFormLayout(angleCollapsibleButton)
 
+
+    # - input fiducials (trajectory) selector
+    distanceLayout = qt.QVBoxLayout()
+    
+    self.inputFiducialSelector = slicer.qMRMLNodeComboBox()
+    self.inputFiducialSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
+    self.inputFiducialSelector.selectNodeUponCreation = True
+    self.inputFiducialSelector.addEnabled = True
+    self.inputFiducialSelector.removeEnabled = True
+    self.inputFiducialSelector.noneEnabled = False
+    self.inputFiducialSelector.showHidden = False
+    self.inputFiducialSelector.showChildNodeTypes = False
+    self.inputFiducialSelector.setMRMLScene( slicer.mrmlScene )
+    self.inputFiducialSelector.setToolTip( "Pick the trajectory." )
+    angleFormLayout.addRow("Trajectory: ", self.inputFiducialSelector)
+
     #  - Model selector
     
     
@@ -91,22 +107,38 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     angleFormLayout.addRow("Model:", self.inputModelSelector)
 
     
-    # - input fiducials (trajectory) selector
     
-    self.inputFiducialSelector = slicer.qMRMLNodeComboBox()
-    self.inputFiducialSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
-    self.inputFiducialSelector.selectNodeUponCreation = True
-    self.inputFiducialSelector.addEnabled = True
-    self.inputFiducialSelector.removeEnabled = True
-    self.inputFiducialSelector.noneEnabled = False
-    self.inputFiducialSelector.showHidden = False
-    self.inputFiducialSelector.showChildNodeTypes = False
-    self.inputFiducialSelector.setMRMLScene( slicer.mrmlScene )
-    self.inputFiducialSelector.setToolTip( "Pick the trajectory." )
-    angleFormLayout.addRow("Trajectory: ", self.inputFiducialSelector)
+
+    self.modelNode = None
+    self.inputModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onModelSelected)
+    
 
 
-  
+    self.angleTable = qt.QTableWidget(1, 2)
+    self.angleTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.angleTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
+    self.angleTableHeaders = ["Model", "Entry Angle"]
+    self.angleTable.setHorizontalHeaderLabels(self.angleTableHeaders)
+    self.angleTable.horizontalHeader().setStretchLastSection(True)
+    angleFormLayout.addWidget(self.angleTable)
+
+    self.extrapolateCheckBox = qt.QCheckBox()
+    self.extrapolateCheckBox.checked = 0
+    self.extrapolateCheckBox.setToolTip("Extrapolate the first and last segment to calculate the distance")
+    self.extrapolateCheckBox.connect('toggled(bool)', self.updateAngleTable)
+    self.extrapolateCheckBox.text = 'Extrapolate curves to measure the distances'
+
+    self.showErrorVectorCheckBox = qt.QCheckBox()
+    self.showErrorVectorCheckBox.checked = 0
+    self.showErrorVectorCheckBox.setToolTip("Show error vectors, which is defined by the target point and the closest point on the curve. The vector is perpendicular to the curve, unless the closest point is one end of the curve.")
+    self.showErrorVectorCheckBox.connect('toggled(bool)', self.updateAngleTable)
+    self.showErrorVectorCheckBox.text = 'Show error vectors'
+
+    distanceLayout.addWidget(self.extrapolateCheckBox)
+    distanceLayout.addWidget(self.showErrorVectorCheckBox)
+    angleFormLayout.addRow(distanceLayout)
+
+
 
     #
     # Apply Button
@@ -146,6 +178,127 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     ModuleWizard will subsitute correct default moduleName.
     """
     globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
+
+
+
+  def onModelSelected(self):
+
+    # Remove observer if previous node exists
+    if self.modelNode and self.tag:
+      self.modelNode.RemoveObserver(self.tag)
+
+    # Update selected node, add observer, and update control points
+    if self.inputModelSelector.currentNode():
+      self.modelNode = self.inputModelSelector.currentNode()
+      self.tag = self.modelNode.AddObserver('ModifiedEvent', self.onAngleUpdated)
+    else:
+      self.modelNode = None
+      self.tag = None
+    self.updateAngleTable()
+
+    
+
+
+  def onAngleUpdated(self,caller,event):
+    if caller.IsA('vtkMRMLModelHierarchyNode') and event == 'ModifiedEvent':
+      self.updateAngleTable()
+
+
+  def updateAngleTable(self):
+
+##    logic = CurveAngleLogic()
+
+    if not self.modelNode:
+      self.angleTable.clear()
+      self.angleTable.setHorizontalHeaderLabels(self.angleTableHeaders)
+
+    else:
+      
+      self.angleTableData = []
+      nOfControlPoints = inputModelSelector.GetNumberOfChildrenNodes()
+      
+      if self.angleTable.rowCount != nOfControlPoints:
+        self.angleTable.setRowCount(nOfControlPoints)
+
+      for i in range(nOfControlPoints):
+      
+        chnode = inputModelSelector.GetNthChildNode(i)
+        if chnode == None:
+          continue
+      
+        mnode = chnode.GetAssociatedNode()
+        if mnode == None:
+          continue
+
+        name = mnode.GetName()
+      
+        poly = mnode.GetPolyData()
+        if poly == None:
+          continue
+      
+        points = vtk.vtkPoints()
+        idList = vtk.vtkIdList()
+        pos0 = [0.0, 0.0, 0.0]
+        posN = [0.0, 0.0, 0.0]
+      
+        inputFiducialSelector.GetNthFiducialPosition(0, pos0)
+        inputFiducialSelector.GetNthFiducialPosition(12, posN)
+      
+        traj = [posN[0]- pos0[0], posN[1]-pos0[1], posN[2]-pos0[2]]
+        inter1= [0.0, 0.0, 0.0]
+        inter2= [0.0, 0.0, 0.0]
+        bspTree = vtk.vtkModifiedBSPTree()
+        bspTree.SetDataSet(poly)
+        bspTree.BuildLocator()
+        inputFiducialSelector.GetNthFiducialPosition(0, inter1)
+        inputFiducialSelector.GetNthFiducialPosition(14, inter2)
+        tolerance = 0.001
+        bspTree.IntersectWithLine(inter1, inter2, tolerance, points, idList)
+
+        if points.GetNumberOfPoints < 1:
+          continue
+      
+    
+        if idList.GetNumberOfIds() < 1:
+          continue
+      
+        cell0 = poly.GetCell(idList.GetId(0))
+        if cell0 == None:
+          continue
+      
+        p0 = cell0.GetPoints()
+        if p0 == None:
+          continue
+      
+        x0 = p0.GetPoint(1)[0]- p0.GetPoint(0)[0]
+        y0 = p0.GetPoint(1)[1]- p0.GetPoint(0)[1]
+        z0 = p0.GetPoint(1)[2]- p0.GetPoint(0)[2]
+        v0 = [x0, y0, z0]
+        x1 = p0.GetPoint(2)[0]- p0.GetPoint(0)[0]
+        y1 = p0.GetPoint(2)[1]- p0.GetPoint(0)[1]
+        z1 = p0.GetPoint(2)[2]- p0.GetPoint(0)[2]
+        v1 = [x1, y1, z1]
+        v0xv1 = np.cross(v0, v1)
+        norm = math.sqrt(v0xv1[0]*v0xv1[0] + v0xv1[1]*v0xv1[1] + v0xv1[2]*v0xv1[2] )
+      
+        normal = (1/norm)*v0xv1
+        angle = vtk.vtkMath.AngleBetweenVectors(normal, traj)
+
+
+        cellModels = qt.QTableWidgetItem(name)
+        cellAngle  = qt.QTableWidgetItem("%f" % angle)
+        cellAngle  = qt.QTableWidgetItem(1)
+
+        row = [cellModels, cellAngle]
+        self.angleTable.setItem(i, 0, row[0])
+        self.angleTable.setItem(i, 1, row[1])
+        
+    
+        self.angleTableData.append(row)
+        
+    self.angleTable.show()
+
+      
 
 
  
@@ -253,6 +406,8 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
       mnode = chnode.GetAssociatedNode()
       if mnode == None:
         continue
+
+      name = mnode.GetName()
       
       poly = mnode.GetPolyData()
       if poly == None:
@@ -280,7 +435,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
       if points.GetNumberOfPoints < 1:
         continue
       
-      #points.GetPoint(0)
+    
 
       if idList.GetNumberOfIds() < 1:
         continue
@@ -307,8 +462,10 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
       normal = (1/norm)*v0xv1
       angle = vtk.vtkMath.AngleBetweenVectors(normal, traj)
       
-      print angle 
+      print (name, angle)
 
+
+    
     
 
 class CurveAngleTest(ScriptedLoadableModuleTest):
