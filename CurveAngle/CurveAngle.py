@@ -265,6 +265,14 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         angles = []
         normals = []
 
+        surfaceNormals = vtk.vtkPolyDataNormals()
+        surfaceNormals.SetInputData(trajectoryPoly)
+        surfaceNormalsOutput = surfaceNormals.GetOutput()
+        surfaceNormalsOutput.Update()
+        # extract the cell data
+        surfaceNormalsCell = surfaceNormalsOutput.GetCellData();
+        surfaceNormals = cellData.GetNormals();
+
         for j in range(nFiducials-1):
 
             inputFiducialNode.GetNthFiducialPosition(j, pos0)
@@ -299,13 +307,18 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 subID = vtk.mutable(0)
                 cellID = vtk.mutable(0)
                 fIntersect = bspTree.IntersectWithLine(pos0, pos1, tolerance, t, intersectingPoint, pCoord, subID, cellID)
+                # idList = vtk.vtkIdList()
+                # intersectingPoints = vtk.vtkPoints()
+                # fIntersect = bspTree.IntersectWithLine(pos0, pos1, tolerance, intersectingPoints, idList)
 
                 if fIntersect == 0:
+                    ## If this happens, consider smaller tolerance
                     print "continue 1"
 
                 isInside = True
 
                 # Get intersecting point and measure the length inside the boject
+                # intersectingPoints.GetPoint(0, intersectingPoint)
                 if isInside0:
                     segmentInObject = np.array(intersectingPoint) - np.array(pos0)
                     lengthInObject = lengthInObject + np.linalg.norm(segmentInObject)
@@ -314,20 +327,31 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                     lengthInObject = lengthInObject + np.linalg.norm(segmentInObject)
                     trajVec = - trajVec
 
+                # cellID = idList.GetId(0)
                 cell = objectPoly.GetCell(cellID)
                 if cell == None:
                     continue
 
-                points2 = cell.GetPoints()
-                if points2 == None:
+                # Check cell type?
+                # if cell.GetCellType() == vtk.VTK_TRIANGLE:
+                #     subID = 0
+                # elif cell.GetCellType() == vtk.VTK_TRIANGLE_STRIP:
+                #     print "Triangle Strip"
+
+                # Get subID
+                cell.IntersectWithLine(pos0, pos1, tolerance, t, intersectingPoint, pCoord, subID)
+                points = cell.GetPoints()
+                if points == None:
                     print "continue 4"
                     continue
                 p0 = [0.0] * 3
                 p1 = [0.0] * 3
                 p2 = [0.0] * 3
-                points2.GetPoint(0, p0)
-                points2.GetPoint(1, p1)
-                points2.GetPoint(2, p2)
+                points.GetPoint(subID + 0, p0)
+                points.GetPoint(subID + 1, p1)
+                points.GetPoint(subID + 2, p2)
+
+                print (intersectingPoint, p0, p1, p2)
                 npap0 = np.array(p0)
                 npap1 = np.array(p1)
                 npap2 = np.array(p2)
@@ -336,6 +360,24 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 v = np.cross(v0, v1)
                 norm = np.linalg.norm(v,ord=1)
                 normVec = v / norm
+
+                # Compute average normal
+                #clippedModel = clip.GetOutput()
+                # cellsNormal = clippedModel.GetCell(cellID).GetPointData().GetNormals()
+                #
+                # averageNormal = [0.0, 0.0, 0.0]
+                # nOfNormals = 0;
+                #
+                # for cellIndex in range(0, cellsNormal.GetNumberOfTuples()):
+                #     cellNormal = [0.0, 0.0, 0.0]
+                #     cellsNormal.GetTuple(cellIndex, cellNormal)
+                #
+                # if not(math.isnan(cellNormal[0]) or math.isnan(cellNormal[1]) or math.isnan(cellNormal[2])):
+                #     averageNormal[0] = averageNormal[0] + cellNormal[0]
+                #     averageNormal[1] = averageNormal[1] + cellNormal[1]
+                #     averageNormal[2] = averageNormal[2] + cellNormal[2]
+                #     nOfNormals = nOfNormals + 1
+
 
                 # Calculate the entry angle. Entry angle is zero, when the trajectory is perpendicular
                 # to the surface.
