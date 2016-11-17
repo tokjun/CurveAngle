@@ -21,7 +21,7 @@ class CurveAngle(ScriptedLoadableModule):
     self.parent.title = "CurveAngle" # TODO make this more human readable by adding spaces
     self.parent.categories = ["Informatics"]
     self.parent.dependencies = []
-    self.parent.contributors = ["Sarah Elbenna (ENSEEIHT), Junichi Tokuda (BWH)"
+    self.parent.contributors = ["Sarah Elbenna (ENSEEIHT), Junichi Tokuda (BWH)"]
     self.parent.helpText = """
     This module traces a curve and lists structures intersecting with it.
     """
@@ -155,8 +155,8 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
 
   def onApplyButton(self):
     logic = CurveAngleLogic()
-    logic.EntryAngle(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
-
+    #logic.EntryAngle(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
+    logic.CheckIntersections(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
 
   def onReload(self,moduleName="CurveAngle"):
     """Generic reload method for any scripted module.
@@ -184,6 +184,7 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
   def onAngleUpdated(self,caller,event):
     if caller.IsA('vtkMRMLModelHierarchyNode') and event == 'ModifiedEvent':
       #self.updateAngleTable()
+      pass
 
 
   def updateAngleTable(self):
@@ -198,93 +199,15 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
 
       self.angleTableData = []
       nOfControlPoints = 0
-      if inputModelSelector:
-        nOfControlPoints = inputModelSelector.GetNumberOfChildrenNodes()
+      if self.inputModelSelector:
+        nOfControlPoints = self.inputModelSelector.GetNumberOfChildrenNodes()
 
       if self.angleTable.rowCount != nOfControlPoints:
         self.angleTable.setRowCount(nOfControlPoints)
-
-      for i in range(nOfControlPoints):
-
-        chnode = inputModelSelector.GetNthChildNode(i)
-        if chnode == None:
-          continue
-
-        mnode = chnode.GetAssociatedNode()
-        if mnode == None:
-          continue
-
-        name = mnode.GetName()
-
-        poly = mnode.GetPolyData()
-        if poly == None:
-          continue
-
-        intersectingPoints = vtk.vtkPoints()
-        idList = vtk.vtkIdList()
-        pos0 = [0.0, 0.0, 0.0]
-        pos1 = [0.0, 0.0, 0.0]
-
-        nFiducials = inputFiducialSelector.GetNumberOfFiducials()
-        for j in range(nFiducials-1):
-            inputFiducialSelector.GetNthFiducialPosition(j, pos0)
-            inputFiducialSelector.GetNthFiducialPosition(j+1, pos1)
-
-            bspTree = vtk.vtkModifiedBSPTree()
-            bspTree.SetDataSet(poly)
-            bspTree.BuildLocator()
-            tolerance = 0.001
-            bspTree.IntersectWithLine(pos0, pos1, tolerance, intersectingPoints, idList)
-
-            if intersectingPoints.GetNumberOfPoints < 1:
-                continue
-
-            if idList.GetNumberOfIds() < 1:
-                continue
-
-            cell = poly.GetCell(idList.GetId(0))
-            if cell == None:
-                continue
-
-            points2 = cell.GetPoints()
-            if points2 == None:
-                continue
-
-            p0 = points2.GetPoint(0)
-            p1 = points2.GetPoint(1)
-            p2 = points2.GetPoint(2)
-            v0 = p1-p0
-            v1 = p2-p0
-
-            #x0 = p0.GetPoint(1)[0]- p0.GetPoint(0)[0]
-            #y0 = p0.GetPoint(1)[1]- p0.GetPoint(0)[1]
-            #z0 = p0.GetPoint(1)[2]- p0.GetPoint(0)[2]
-            #v0 = [x0, y0, z0]
-            #x1 = p0.GetPoint(2)[0]- p0.GetPoint(0)[0]
-            #y1 = p0.GetPoint(2)[1]- p0.GetPoint(0)[1]
-            #z1 = p0.GetPoint(2)[2]- p0.GetPoint(0)[2]
-            #v1 = [x1, y1, z1]
-            #norm = math.sqrt(v0xv1[0]*v0xv1[0] + v0xv1[1]*v0xv1[1] + v0xv1[2]*v0xv1[2] )
-            v = np.cross(v0, v1)
-            norm = linalg.norm(v, ord=1)
-            normvec = v/norm
-            angle = vtk.vtkMath.AngleBetweenVectors(normal, traj)
-            if
-
-        #normal = (1/norm)*v0xv1
-        #angle = vtk.vtkMath.AngleBetweenVectors(normal, traj)
-
-        cellModels = qt.QTableWidgetItem(name)
-        cellAngle  = qt.QTableWidgetItem("%f" % angle)
-        cellAngle  = qt.QTableWidgetItem(1)
-
-        row = [cellModels, cellAngle]
+        row = ['aa', 'bb']
         self.angleTable.setItem(i, 0, row[0])
         self.angleTable.setItem(i, 1, row[1])
-
-
         self.angleTableData.append(row)
-
     self.angleTable.show()
 
 #
@@ -301,70 +224,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-
-
-  def hasImageData(self,volumeNode):
-    """This is an example logic method that
-    returns true if the passed in volume
-    node has valid image data
-    """
-    if not volumeNode:
-      logging.debug('hasImageData failed: no volume node')
-      return False
-    if volumeNode.GetImageData() is None:
-      logging.debug('hasImageData failed: no image data in volume node')
-      return False
-    return True
-
-  def isValidInputOutputData(self, inputLabelMapNode, inputFiducialNode):
-    """Validates if the output is not the same as input
-    """
-    if not inputLabelMapNode:
-      logging.debug('isValidInputOutputData failed: no input label map node defined')
-      return False
-    if not inputFiducialNode:
-      logging.debug('isValidInputOutputData failed: no input fiducial  node defined')
-      return False
-    return True
-
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
-    else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qpixMap = qt.QPixmap().grabWidget(widget)
-    qimage = qpixMap.toImage()
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
-
-  def CheckInterSections(self, inputModelNode, inputFiducialNode):
+  def CheckIntersections(self, inputModelNode, inputFiducialNode):
     """
     Run the actual algorithm
     """
@@ -379,7 +239,9 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
 
     nOfModels = inputModelNode.GetNumberOfChildrenNodes()
     objectIDs = []
-    angles = []
+    objectNames = []
+    entryAngles = []
+    totalLengthInObject = []
 
     for i in range(nOfModels):
         chnode = inputModelNode.GetNthChildNode(i)
@@ -390,9 +252,11 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
             continue
 
         name = mnode.GetName()
-        poly = mnode.GetPolyData()
-        if poly == None:
+        objectPoly = mnode.GetPolyData()
+        if objectPoly == None:
             continue
+
+        print "Processing object: %s" % name
 
         intersectingPoints = vtk.vtkPoints()
         trajectoryPoints = vtk.vtkPoints()
@@ -401,28 +265,31 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         pos0 = [0.0] * 3
         pos1 = [0.0] * 3
 
-        nFiducial = inputFiducialNode.GetNumberOfFiducials()
+        nFiducials = inputFiducialNode.GetNumberOfFiducials()
         posStart = None
         posEnd = None
 
         # Look for points inside the object
-        for j in range(nFiducial):
-            inputFiducialSelector.GetNthFiducialPosition(j, pos0)
-            trajectoryPoints.InsertNextPoints(pos0)
+        for j in range(nFiducials):
+            inputFiducialNode.GetNthFiducialPosition(j, pos0)
+            trajectoryPoints.InsertNextPoint(pos0)
 
-        enclosed = vtkSelectEnclosedPoints()
-        enclosed.SetInputData(trajectoryPoints)
-        enclosed.SetSurfaceData(poly)
+        trajectoryPoly = vtk.vtkPolyData()
+        trajectoryPoly.SetPoints(trajectoryPoints)
+        enclosed = vtk.vtkSelectEnclosedPoints()
+        enclosed.SetInputData(trajectoryPoly)
+        enclosed.SetSurfaceData(objectPoly)
         enclosed.Update()
 
         lengthInObject = 0.0
 
-        isInside = false
+        isInside = False
 
+        angles = []
         for j in range(nFiducials-1):
 
-            inputFiducialSelector.GetNthFiducialPosition(j, pos0)
-            inputFiducialSelector.GetNthFiducialPosition(j+1, pos1)
+            inputFiducialNode.GetNthFiducialPosition(j, pos0)
+            inputFiducialNode.GetNthFiducialPosition(j+1, pos1)
 
             inout0 = enclosed.IsInside(j)
             inout1 = enclosed.IsInside(j+1)
@@ -440,7 +307,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 ## Potential intersection
 
                 bspTree = vtk.vtkModifiedBSPTree()
-                bspTree.SetDataSet(poly)
+                bspTree.SetDataSet(objectPoly)
                 bspTree.BuildLocator()
                 tolerance = 0.001
                 bspTree.IntersectWithLine(pos0, pos1, tolerance, intersectingPoints, idList)
@@ -451,7 +318,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 if idList.GetNumberOfIds() < 1:
                     continue
 
-                cell = poly.GetCell(idList.GetId(0))
+                cell = objectPoly.GetCell(idList.GetId(0))
                 if cell == None:
                     continue
 
@@ -461,11 +328,11 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 p = [0.0]*3
                 intersectingPoints.GetPoint(0, p)
                 if inout0:
-                    segmentInObject = np.array(p) - np.array(po0)
-                    lengthInObject = np.linalg.norm(segmentInObject)
+                    segmentInObject = np.array(p) - np.array(pos0)
+                    lengthInObject = lengthInObject + np.linalg.norm(segmentInObject)
                 elif inout1:
-                    segmentInObject = np.array(p) - np.array(po1)
-                    lengthInObject = np.linalg.norm(segmentInObject)
+                    segmentInObject = np.array(p) - np.array(pos1)
+                    lengthInObject = lengthInObject + np.linalg.norm(segmentInObject)
 
                 points2 = cell.GetPoints()
                 if points2 == None:
@@ -485,15 +352,20 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 norm = np.linalg.norm(v,ord=1)
                 normVec = v/norm
                 angle = vtk.vtkMath.AngleBetweenVectors(normVec, traj)
+                angles.append(angle)
 
                 print "  -- Intersecting at (%f, %f, %f) with angle %f" % (p[0], p[1], p[2], angle)
 
         print "Length in object = %f" % lengthInObject
 
         if isInside:
-            objectIds.append(i)            
+            objectIDs.append(i)
+            objectNames.append(name)
+            entryAngles.append(angles)
+            totalLengthInObject.append(lengthInObject)
 
-    print (name, angle)
+    return (objectIDs, entryAngles, totalLengthInObject)
+
 
 class CurveAngleTest(ScriptedLoadableModuleTest):
   """
@@ -546,5 +418,4 @@ class CurveAngleTest(ScriptedLoadableModuleTest):
 
     volumeNode = slicer.util.getNode(pattern="FA")
     logic = CurveAngleLogic()
-    self.assertIsNotNone( logic.hasImageData(volumeNode) )
     self.delayDisplay('Test passed!')
