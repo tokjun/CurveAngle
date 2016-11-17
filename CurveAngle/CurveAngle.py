@@ -73,8 +73,6 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     angleFormLayout = qt.QFormLayout(angleCollapsibleButton)
 
     # - input fiducials (trajectory) selector
-    distanceLayout = qt.QVBoxLayout()
-
     self.inputFiducialSelector = slicer.qMRMLNodeComboBox()
     self.inputFiducialSelector.nodeTypes = ["vtkMRMLMarkupsFiducialNode"]
     self.inputFiducialSelector.selectNodeUponCreation = True
@@ -88,44 +86,28 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     angleFormLayout.addRow("Trajectory: ", self.inputFiducialSelector)
 
     #  - Model selector
-    self.inputModelSelector = slicer.qMRMLNodeComboBox()
-    self.inputModelSelector.nodeTypes = ["vtkMRMLModelHierarchyNode"]
-    self.inputModelSelector.selectNodeUponCreation = True
-    self.inputModelSelector.addEnabled = True
-    self.inputModelSelector.removeEnabled = True
-    self.inputModelSelector.noneEnabled = False
-    self.inputModelSelector.showHidden = False
-    self.inputModelSelector.showChildNodeTypes = False
-    self.inputModelSelector.setMRMLScene( slicer.mrmlScene )
-    self.inputModelSelector.setToolTip( "Select a 3D Model" )
-    angleFormLayout.addRow("Model:", self.inputModelSelector)
+    self.inputModelHierarchySelector = slicer.qMRMLNodeComboBox()
+    self.inputModelHierarchySelector.nodeTypes = ["vtkMRMLModelHierarchyNode"]
+    self.inputModelHierarchySelector.selectNodeUponCreation = True
+    self.inputModelHierarchySelector.addEnabled = True
+    self.inputModelHierarchySelector.removeEnabled = True
+    self.inputModelHierarchySelector.noneEnabled = False
+    self.inputModelHierarchySelector.showHidden = False
+    self.inputModelHierarchySelector.showChildNodeTypes = False
+    self.inputModelHierarchySelector.setMRMLScene( slicer.mrmlScene )
+    self.inputModelHierarchySelector.setToolTip( "Select a 3D Model" )
+    angleFormLayout.addRow("Model:", self.inputModelHierarchySelector)
 
     self.modelNode = None
-    self.inputModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onModelSelected)
+    #self.inputModelHierarchySelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onModelSelected)
 
-    self.angleTable = qt.QTableWidget(1, 2)
-    self.angleTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
-    self.angleTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-    self.angleTableHeaders = ["Model", "Entry Angle"]
-    self.angleTable.setHorizontalHeaderLabels(self.angleTableHeaders)
-    self.angleTable.horizontalHeader().setStretchLastSection(True)
-    angleFormLayout.addWidget(self.angleTable)
-
-    self.extrapolateCheckBox = qt.QCheckBox()
-    self.extrapolateCheckBox.checked = 0
-    self.extrapolateCheckBox.setToolTip("Extrapolate the first and last segment to calculate the distance")
-    self.extrapolateCheckBox.connect('toggled(bool)', self.updateAngleTable)
-    self.extrapolateCheckBox.text = 'Extrapolate curves to measure the distances'
-
-    self.showErrorVectorCheckBox = qt.QCheckBox()
-    self.showErrorVectorCheckBox.checked = 0
-    self.showErrorVectorCheckBox.setToolTip("Show error vectors, which is defined by the target point and the closest point on the curve. The vector is perpendicular to the curve, unless the closest point is one end of the curve.")
-    self.showErrorVectorCheckBox.connect('toggled(bool)', self.updateAngleTable)
-    self.showErrorVectorCheckBox.text = 'Show error vectors'
-
-    distanceLayout.addWidget(self.extrapolateCheckBox)
-    distanceLayout.addWidget(self.showErrorVectorCheckBox)
-    angleFormLayout.addRow(distanceLayout)
+    self.intersectionTable = qt.QTableWidget(1, 4)
+    self.intersectionTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+    self.intersectionTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
+    self.intersectionTableHeader = ["Model", "Angle 1 (normal)", "Angle 2 (normal)", "Length"]
+    self.intersectionTable.setHorizontalHeaderLabels(self.intersectionTableHeader)
+    self.intersectionTable.horizontalHeader().setStretchLastSection(True)
+    angleFormLayout.addWidget(self.intersectionTable)
 
     #
     # Apply Button
@@ -137,9 +119,8 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
 
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    self.inputModelSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
+    self.inputModelHierarchySelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
     self.inputFiducialSelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onSelect)
-
 
     # Add vertical spacer
     self.layout.addStretch(1)
@@ -147,68 +128,62 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     # Refresh Apply button state
     self.onSelect()
 
+    # variables
+    self.objectIDs = None
+    self.objectNames = None
+    self.normalVectors = None
+    self.entryAngles = None
+    self.totalLengthInObject = None
+
   def cleanup(self):
     pass
 
   def onSelect(self):
-    self.applyButton.enabled = self.inputModelSelector.currentNode() and self.inputFiducialSelector.currentNode()
+    self.applyButton.enabled = self.inputModelHierarchySelector.currentNode() and self.inputFiducialSelector.currentNode()
 
   def onApplyButton(self):
     logic = CurveAngleLogic()
     #logic.EntryAngle(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
-    logic.CheckIntersections(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
+    [self.objectIDs, self.objectNames, self.normalVectors, self.entryAngles, self.totalLengthInObject] = logic.CheckIntersections(self.inputModelHierarchySelector.currentNode(), self.inputFiducialSelector.currentNode())
+    self.updateIntersectionTable()
+
+  def updateIntersectionTable(self):
+    ##    logic = CurveAngleLogic()
+    modelHierarchyNode = self.inputModelHierarchySelector.currentNode()
+    fiducialNode = self.inputFiducialSelector.currentNode()
+
+    if (not modelHierarchyNode) or (not fiducialNode):
+        self.intersectionTable.clear()
+        self.intersectionTable.setHorizontalHeaderLabels(self.intersectionTableHeader)
+
+    else:
+        nObjects = len(self.objectIDs)
+        self.intersectionTable.setRowCount(nObjects)
+        for i in range(nObjects):
+            # "Model", "Entry 1", "Entry 2", "Length"
+            self.intersectionTable.setItem(i, 0, qt.QTableWidgetItem(self.objectNames[i]))
+            angles = self.entryAngles[i]
+            normals = self.normalVectors[i]
+            nEntry = 2
+            if len(angles) < 2:
+                nEntry = 1
+            for j in range(2):
+                if j < nEntry:
+                    lb = "%f (%f, %f, %f)" % (angles[j], normals[j][0], normals[j][1], normals[j][1])
+                    self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem(lb))
+                else:
+                    self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem("--"))
+
+            self.intersectionTable.setItem(i, 3, qt.QTableWidgetItem("%f" % self.totalLengthInObject[i]))
+
+    self.intersectionTable.show()
+
 
   def onReload(self,moduleName="CurveAngle"):
     """Generic reload method for any scripted module.
     ModuleWizard will subsitute correct default moduleName.
     """
     globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
-
-
-
-  def onModelSelected(self):
-
-    # Remove observer if previous node exists
-    if self.modelNode and self.tag:
-      self.modelNode.RemoveObserver(self.tag)
-
-    # Update selected node, add observer, and update control points
-    if self.inputModelSelector.currentNode():
-      self.modelNode = self.inputModelSelector.currentNode()
-      self.tag = self.modelNode.AddObserver('ModifiedEvent', self.onAngleUpdated)
-    else:
-      self.modelNode = None
-      self.tag = None
-    self.updateAngleTable()
-
-  def onAngleUpdated(self,caller,event):
-    if caller.IsA('vtkMRMLModelHierarchyNode') and event == 'ModifiedEvent':
-      #self.updateAngleTable()
-      pass
-
-
-  def updateAngleTable(self):
-
-    ##    logic = CurveAngleLogic()
-
-    if not self.modelNode:
-      self.angleTable.clear()
-      self.angleTable.setHorizontalHeaderLabels(self.angleTableHeaders)
-
-    else:
-
-      self.angleTableData = []
-      nOfControlPoints = 0
-      if self.inputModelSelector:
-        nOfControlPoints = self.inputModelSelector.GetNumberOfChildrenNodes()
-
-      if self.angleTable.rowCount != nOfControlPoints:
-        self.angleTable.setRowCount(nOfControlPoints)
-        row = ['aa', 'bb']
-        self.angleTable.setItem(i, 0, row[0])
-        self.angleTable.setItem(i, 1, row[1])
-        self.angleTableData.append(row)
-    self.angleTable.show()
 
 #
 # CurveAngleLogic
@@ -224,7 +199,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-  def CheckIntersections(self, inputModelNode, inputFiducialNode):
+  def CheckIntersections(self, inputModelHierarchyNode, inputFiducialNode):
     """
     Run the actual algorithm
     """
@@ -232,19 +207,20 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
     logging.info('Processing started')
     print ("EntryAngle() is called.")
 
-    if inputModelNode == None:
+    if inputModelHierarchyNode == None:
       return None
     if inputFiducialNode == None:
       return None
 
-    nOfModels = inputModelNode.GetNumberOfChildrenNodes()
+    nOfModels = inputModelHierarchyNode.GetNumberOfChildrenNodes()
     objectIDs = []
     objectNames = []
     entryAngles = []
+    normalVectors = []
     totalLengthInObject = []
 
     for i in range(nOfModels):
-        chnode = inputModelNode.GetNthChildNode(i)
+        chnode = inputModelHierarchyNode.GetNthChildNode(i)
         if chnode == None:
             continue
         mnode = chnode.GetAssociatedNode()
@@ -253,12 +229,12 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
 
         name = mnode.GetName()
         objectPoly = mnode.GetPolyData()
+
         if objectPoly == None:
             continue
 
-        print "Processing object: %s" % name
+        # print "Processing object: %s" % name
 
-        intersectingPoints = vtk.vtkPoints()
         trajectoryPoints = vtk.vtkPoints()
 
         idList = vtk.vtkIdList()
@@ -279,6 +255,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         enclosed = vtk.vtkSelectEnclosedPoints()
         enclosed.SetInputData(trajectoryPoly)
         enclosed.SetSurfaceData(objectPoly)
+        enclosed.SetTolerance(0.0001) # Very important to get consistent result.
         enclosed.Update()
 
         lengthInObject = 0.0
@@ -286,56 +263,64 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         isInside = False
 
         angles = []
+        normals = []
+
         for j in range(nFiducials-1):
 
             inputFiducialNode.GetNthFiducialPosition(j, pos0)
             inputFiducialNode.GetNthFiducialPosition(j+1, pos1)
 
-            inout0 = enclosed.IsInside(j)
-            inout1 = enclosed.IsInside(j+1)
+            isInside0 = enclosed.IsInside(j)
+            isInside1 = enclosed.IsInside(j+1)
 
-            print "Point %d: from (%f, %f, %f) (%d) to (%f, %f, %f) (%d)" % (j, pos0[0], pos0[1], pos0[2], inout0, pos1[0], pos1[1], pos1[2], inout1)
+            ## For debug
+            print "Point %d: from (%f, %f, %f) (%d) to (%f, %f, %f) (%d)" % (j, pos0[0], pos0[1], pos0[2], isInside0, pos1[0], pos1[1], pos1[2], isInside1)
 
-            traj = np.array(pos1) - np.array(pos0)
+            # A vector that represents the trajectory between pos0 and pos1
+            # The orientation will be adjusted later to direct to the outside of the object.
+            trajVec = np.array(pos1) - np.array(pos0)
 
-            if inout0 and inout1:
+            if isInside0 and isInside1:
                 ## Both in the object
-                lSegment = np.linalg.norm(traj)
+                lSegment = np.linalg.norm(trajVec)
                 lengthInObject = lengthInObject + lSegment
+                isInside = True
 
-            if inout0 != inout1:
+            intersectingPoint = [0.0]*3
+
+            if isInside0 != isInside1:
                 ## Potential intersection
-
                 bspTree = vtk.vtkModifiedBSPTree()
                 bspTree.SetDataSet(objectPoly)
                 bspTree.BuildLocator()
-                tolerance = 0.001
-                bspTree.IntersectWithLine(pos0, pos1, tolerance, intersectingPoints, idList)
+                tolerance = 0.0001
+                pCoord = [0.0]*3
+                t = vtk.mutable(0)
+                subID = vtk.mutable(0)
+                cellID = vtk.mutable(0)
+                fIntersect = bspTree.IntersectWithLine(pos0, pos1, tolerance, t, intersectingPoint, pCoord, subID, cellID)
 
-                if intersectingPoints.GetNumberOfPoints < 1:
-                    continue
-
-                if idList.GetNumberOfIds() < 1:
-                    continue
-
-                cell = objectPoly.GetCell(idList.GetId(0))
-                if cell == None:
-                    continue
+                if fIntersect == 0:
+                    print "continue 1"
 
                 isInside = True
 
                 # Get intersecting point and measure the length inside the boject
-                p = [0.0]*3
-                intersectingPoints.GetPoint(0, p)
-                if inout0:
-                    segmentInObject = np.array(p) - np.array(pos0)
+                if isInside0:
+                    segmentInObject = np.array(intersectingPoint) - np.array(pos0)
                     lengthInObject = lengthInObject + np.linalg.norm(segmentInObject)
-                elif inout1:
-                    segmentInObject = np.array(p) - np.array(pos1)
+                elif isInside1:
+                    segmentInObject = np.array(intersectingPoint) - np.array(pos1)
                     lengthInObject = lengthInObject + np.linalg.norm(segmentInObject)
+                    trajVec = - trajVec
+
+                cell = objectPoly.GetCell(cellID)
+                if cell == None:
+                    continue
 
                 points2 = cell.GetPoints()
                 if points2 == None:
+                    print "continue 4"
                     continue
                 p0 = [0.0] * 3
                 p1 = [0.0] * 3
@@ -350,21 +335,35 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 v1 = npap2-npap0
                 v = np.cross(v0, v1)
                 norm = np.linalg.norm(v,ord=1)
-                normVec = v/norm
-                angle = vtk.vtkMath.AngleBetweenVectors(normVec, traj)
-                angles.append(angle)
+                normVec = v / norm
 
-                print "  -- Intersecting at (%f, %f, %f) with angle %f" % (p[0], p[1], p[2], angle)
+                # Calculate the entry angle. Entry angle is zero, when the trajectory is perpendicular
+                # to the surface.
+                angle = vtk.vtkMath.AngleBetweenVectors(normVec, trajVec) * 180.0 / math.pi
+                angles.append(angle)
+                normals.append(normVec)
+
+                trajNorm = np.linalg.norm(trajVec, ord=1)
+                nTrajVec = trajVec
+                if trajNorm > 0.0:
+                    nTrajVec = trajVec / trajNorm
+
+                # # Caluclate the entry vector defined by: <v_e> = <n_t> - <n>
+                # # where <n_t> and <n> are the trajectory vector and the normal.
+                # entryVec = nTrajVec - normVec
+                #print "  -- Intersecting at (%f, %f, %f) with angle %f and normal vector (%f, %f, %f)" % (p[0], p[1], p[2], angle, normVec[0], normVec[1], normVec[2])
 
         print "Length in object = %f" % lengthInObject
 
         if isInside:
             objectIDs.append(i)
             objectNames.append(name)
+            normalVectors.append(normals)
             entryAngles.append(angles)
             totalLengthInObject.append(lengthInObject)
 
-    return (objectIDs, entryAngles, totalLengthInObject)
+    print "-----------"
+    return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject)
 
 
 class CurveAngleTest(ScriptedLoadableModuleTest):
