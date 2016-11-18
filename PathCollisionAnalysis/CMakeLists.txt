@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME CurveAngle)
+set(MODULE_NAME PathCollisionAnalysis)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS

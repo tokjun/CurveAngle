@@ -11,14 +11,14 @@ import math
 # the trajoectory given by the fiducial node.
 #
 
-class CurveAngle(ScriptedLoadableModule):
+class PathCollisionAnalysis(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "CurveAngle" # TODO make this more human readable by adding spaces
+    self.parent.title = "PathCollisionAnalysis" # TODO make this more human readable by adding spaces
     self.parent.categories = ["Informatics"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sarah Elbenna (ENSEEIHT), Junichi Tokuda (BWH)"]
@@ -31,10 +31,10 @@ class CurveAngle(ScriptedLoadableModule):
     """ # replace with organization, grant and thanks.
 
 #
-# CurveAngleWidget
+# PathCollisionAnalysisWidget
 #
 
-class CurveAngleWidget(ScriptedLoadableModuleWidget):
+class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
@@ -58,7 +58,7 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     #  your module to users)
     self.reloadButton = qt.QPushButton("Reload")
     self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CurveAngle Reload"
+    self.reloadButton.name = "PathCollisionAnalysis Reload"
     reloadFormLayout.addWidget(self.reloadButton)
     self.reloadButton.connect('clicked()', self.onReload)
     #
@@ -142,13 +142,13 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     self.applyButton.enabled = self.inputModelHierarchySelector.currentNode() and self.inputFiducialSelector.currentNode()
 
   def onApplyButton(self):
-    logic = CurveAngleLogic()
+    logic = PathCollisionAnalysisLogic()
     #logic.EntryAngle(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
     [self.objectIDs, self.objectNames, self.normalVectors, self.entryAngles, self.totalLengthInObject] = logic.CheckIntersections(self.inputModelHierarchySelector.currentNode(), self.inputFiducialSelector.currentNode())
     self.updateIntersectionTable()
 
   def updateIntersectionTable(self):
-    ##    logic = CurveAngleLogic()
+    ##    logic = PathCollisionAnalysisLogic()
     modelHierarchyNode = self.inputModelHierarchySelector.currentNode()
     fiducialNode = self.inputFiducialSelector.currentNode()
 
@@ -179,17 +179,17 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
     self.intersectionTable.show()
 
 
-  def onReload(self,moduleName="CurveAngle"):
+  def onReload(self,moduleName="PathCollisionAnalysis"):
     """Generic reload method for any scripted module.
     ModuleWizard will subsitute correct default moduleName.
     """
     globals()[moduleName] = slicer.util.reloadScriptedModule(moduleName)
 
 #
-# CurveAngleLogic
+# PathCollisionAnalysisLogic
 #
 
-class CurveAngleLogic(ScriptedLoadableModuleLogic):
+class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -279,7 +279,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         # extract the cell data
         surfaceNormalsCellData = surfaceNormalsOutput.GetCellData();
         sNormals = surfaceNormalsCellData.GetNormals()
-        
+
         for j in range(nFiducials-1):
 
             inputFiducialNode.GetNthFiducialPosition(j, pos0)
@@ -431,7 +431,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
 
 
 
-class CurveAngleTest(ScriptedLoadableModuleTest):
+class PathCollisionAnalysisTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   Uses ScriptedLoadableModuleTest base class, available at:
@@ -447,9 +447,9 @@ class CurveAngleTest(ScriptedLoadableModuleTest):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_CurveAngle1()
+    self.test_PathCollisionAnalysis1()
 
-  def test_CurveAngle1(self):
+  def test_PathCollisionAnalysis1(self):
     """ Ideally you should have several levels of tests.  At the lowest level
     tests should exercise the functionality of the logic with different inputs
     (both valid and invalid).  At higher levels your tests should emulate the
@@ -481,5 +481,5 @@ class CurveAngleTest(ScriptedLoadableModuleTest):
     self.delayDisplay('Finished with download and loading')
 
     volumeNode = slicer.util.getNode(pattern="FA")
-    logic = CurveAngleLogic()
+    logic = PathCollisionAnalysisLogic()
     self.delayDisplay('Test passed!')
