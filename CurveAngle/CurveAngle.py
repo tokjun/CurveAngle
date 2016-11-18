@@ -169,7 +169,7 @@ class CurveAngleWidget(ScriptedLoadableModuleWidget):
                 nEntry = 1
             for j in range(2):
                 if j < nEntry:
-                    lb = "%f (%f, %f, %f)" % (angles[j], normals[j][0], normals[j][1], normals[j][1])
+                    lb = "%f (%f, %f, %f)" % (angles[j], normals[j][0], normals[j][1], normals[j][2])
                     self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem(lb))
                 else:
                     self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem("--"))
@@ -233,6 +233,11 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         if objectPoly == None:
             continue
 
+        triangle = vtk.vtkTriangleFilter()
+        triangle.SetInputData(objectPoly)
+        triangle.Update()
+        objectTrianglePoly = triangle.GetOutput()
+
         # print "Processing object: %s" % name
 
         trajectoryPoints = vtk.vtkPoints()
@@ -254,7 +259,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         trajectoryPoly.SetPoints(trajectoryPoints)
         enclosed = vtk.vtkSelectEnclosedPoints()
         enclosed.SetInputData(trajectoryPoly)
-        enclosed.SetSurfaceData(objectPoly)
+        enclosed.SetSurfaceData(objectTrianglePoly)
         enclosed.SetTolerance(0.0001) # Very important to get consistent result.
         enclosed.Update()
 
@@ -266,13 +271,15 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
         normals = []
 
         surfaceNormals = vtk.vtkPolyDataNormals()
-        surfaceNormals.SetInputData(trajectoryPoly)
+        surfaceNormals.SetInputData(objectTrianglePoly)
+        surfaceNormals.ComputeCellNormalsOn()
+        surfaceNormals.Update()
         surfaceNormalsOutput = surfaceNormals.GetOutput()
-        surfaceNormalsOutput.Update()
-        # extract the cell data
-        surfaceNormalsCell = surfaceNormalsOutput.GetCellData();
-        surfaceNormals = cellData.GetNormals();
 
+        # extract the cell data
+        surfaceNormalsCellData = surfaceNormalsOutput.GetCellData();
+        sNormals = surfaceNormalsCellData.GetNormals()
+        
         for j in range(nFiducials-1):
 
             inputFiducialNode.GetNthFiducialPosition(j, pos0)
@@ -282,7 +289,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
             isInside1 = enclosed.IsInside(j+1)
 
             ## For debug
-            print "Point %d: from (%f, %f, %f) (%d) to (%f, %f, %f) (%d)" % (j, pos0[0], pos0[1], pos0[2], isInside0, pos1[0], pos1[1], pos1[2], isInside1)
+            #print "Point %d: from (%f, %f, %f) (%d) to (%f, %f, %f) (%d)" % (j, pos0[0], pos0[1], pos0[2], isInside0, pos1[0], pos1[1], pos1[2], isInside1)
 
             # A vector that represents the trajectory between pos0 and pos1
             # The orientation will be adjusted later to direct to the outside of the object.
@@ -299,7 +306,7 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
             if isInside0 != isInside1:
                 ## Potential intersection
                 bspTree = vtk.vtkModifiedBSPTree()
-                bspTree.SetDataSet(objectPoly)
+                bspTree.SetDataSet(objectTrianglePoly)
                 bspTree.BuildLocator()
                 tolerance = 0.0001
                 pCoord = [0.0]*3
@@ -328,9 +335,12 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                     trajVec = - trajVec
 
                 # cellID = idList.GetId(0)
-                cell = objectPoly.GetCell(cellID)
+                cell = objectTrianglePoly.GetCell(cellID)
                 if cell == None:
                     continue
+
+                cellNormal = [0.0]*3
+                sNormals.GetTuple(cellID, cellNormal)
 
                 # Check cell type?
                 # if cell.GetCellType() == vtk.VTK_TRIANGLE:
@@ -338,8 +348,8 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 # elif cell.GetCellType() == vtk.VTK_TRIANGLE_STRIP:
                 #     print "Triangle Strip"
 
-                # Get subID
-                cell.IntersectWithLine(pos0, pos1, tolerance, t, intersectingPoint, pCoord, subID)
+                # # Get subID -- no need since the cells have already converted to triangles
+                # cell.IntersectWithLine(pos0, pos1, tolerance, t, intersectingPoint, pCoord, subID)
                 points = cell.GetPoints()
                 if points == None:
                     print "continue 4"
@@ -347,19 +357,26 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
                 p0 = [0.0] * 3
                 p1 = [0.0] * 3
                 p2 = [0.0] * 3
-                points.GetPoint(subID + 0, p0)
-                points.GetPoint(subID + 1, p1)
-                points.GetPoint(subID + 2, p2)
 
-                print (intersectingPoint, p0, p1, p2)
-                npap0 = np.array(p0)
-                npap1 = np.array(p1)
-                npap2 = np.array(p2)
-                v0 = npap1-npap0
-                v1 = npap2-npap0
-                v = np.cross(v0, v1)
-                norm = np.linalg.norm(v,ord=1)
-                normVec = v / norm
+                # Get point (when subID is used)
+                # points.GetPoint(subID + 0, p0)
+                # points.GetPoint(subID + 1, p1)
+                # points.GetPoint(subID + 2, p2)
+
+                points.GetPoint(0, p0)
+                points.GetPoint(1, p1)
+                points.GetPoint(2, p2)
+
+                # print (intersectingPoint, p0, p1, p2)
+                # npap0 = np.array(p0)
+                # npap1 = np.array(p1)
+                # npap2 = np.array(p2)
+                # v0 = npap1-npap0
+                # v1 = npap2-npap0
+                # v = np.cross(v0, v1)
+                # norm = np.linalg.norm(v,ord=1)
+                # normVec = v / norm
+                # print "Normal = (%f, %f, %f) / (%f, %f, %f)" %  (normVec[0], normVec[1], normVec[2], cellNormal[0], cellNormal[1], cellNormal[2])
 
                 # Compute average normal
                 #clippedModel = clip.GetOutput()
@@ -381,9 +398,10 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
 
                 # Calculate the entry angle. Entry angle is zero, when the trajectory is perpendicular
                 # to the surface.
-                angle = vtk.vtkMath.AngleBetweenVectors(normVec, trajVec) * 180.0 / math.pi
+                # angle = vtk.vtkMath.AngleBetweenVectors(normVec, trajVec) * 180.0 / math.pi
+                angle = vtk.vtkMath.AngleBetweenVectors(cellNormal, trajVec) * 180.0 / math.pi
                 angles.append(angle)
-                normals.append(normVec)
+                normals.append(cellNormal)
 
                 trajNorm = np.linalg.norm(trajVec, ord=1)
                 nTrajVec = trajVec
@@ -406,6 +424,11 @@ class CurveAngleLogic(ScriptedLoadableModuleLogic):
 
     print "-----------"
     return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject)
+
+  def ComputeNormal(self, poly, center, radius):
+
+    pass
+
 
 
 class CurveAngleTest(ScriptedLoadableModuleTest):
