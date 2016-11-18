@@ -203,10 +203,6 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
     """
     Run the actual algorithm
     """
-
-    logging.info('Processing started')
-    print ("EntryAngle() is called.")
-
     if inputModelHierarchyNode == None:
       return None
     if inputFiducialNode == None:
@@ -320,7 +316,7 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
 
                 if fIntersect == 0:
                     ## If this happens, consider smaller tolerance
-                    print "continue 1"
+                    continue
 
                 isInside = True
 
@@ -413,8 +409,6 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
                 # entryVec = nTrajVec - normVec
                 #print "  -- Intersecting at (%f, %f, %f) with angle %f and normal vector (%f, %f, %f)" % (p[0], p[1], p[2], angle, normVec[0], normVec[1], normVec[2])
 
-        print "Length in object = %f" % lengthInObject
-
         if isInside:
             objectIDs.append(i)
             objectNames.append(name)
@@ -422,13 +416,10 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
             entryAngles.append(angles)
             totalLengthInObject.append(lengthInObject)
 
-    print "-----------"
     return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject)
 
   def ComputeNormal(self, poly, center, radius):
-
     pass
-
 
 
 class PathCollisionAnalysisTest(ScriptedLoadableModuleTest):
