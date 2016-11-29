@@ -50,6 +50,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     # Reload and Test area
     reloadCollapsibleButton = ctk.ctkCollapsibleButton()
     reloadCollapsibleButton.text = "Reload && Test"
+    reloadCollapsibleButton.collapsed = True
     self.layout.addWidget(reloadCollapsibleButton)
     reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
 
@@ -64,13 +65,13 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     #
     ####################
     #
-    # Entry Angle area
+    # Main area
     #
-    angleCollapsibleButton = ctk.ctkCollapsibleButton()
-    angleCollapsibleButton.text = "Entry Angle"
-    angleCollapsibleButton.collapsed = True
-    self.layout.addWidget(angleCollapsibleButton)
-    angleFormLayout = qt.QFormLayout(angleCollapsibleButton)
+    mainCollapsibleButton = ctk.ctkCollapsibleButton()
+    mainCollapsibleButton.text = "Collision Analysis"
+    mainCollapsibleButton.collapsed = False
+    self.layout.addWidget(mainCollapsibleButton)
+    mainFormLayout = qt.QFormLayout(mainCollapsibleButton)
 
     # - input fiducials (trajectory) selector
     self.inputFiducialSelector = slicer.qMRMLNodeComboBox()
@@ -83,7 +84,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.inputFiducialSelector.showChildNodeTypes = False
     self.inputFiducialSelector.setMRMLScene( slicer.mrmlScene )
     self.inputFiducialSelector.setToolTip( "Pick the trajectory." )
-    angleFormLayout.addRow("Trajectory: ", self.inputFiducialSelector)
+    mainFormLayout.addRow("Trajectory: ", self.inputFiducialSelector)
 
     #  - Model selector
     self.inputModelHierarchySelector = slicer.qMRMLNodeComboBox()
@@ -96,7 +97,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.inputModelHierarchySelector.showChildNodeTypes = False
     self.inputModelHierarchySelector.setMRMLScene( slicer.mrmlScene )
     self.inputModelHierarchySelector.setToolTip( "Select a 3D Model" )
-    angleFormLayout.addRow("Model:", self.inputModelHierarchySelector)
+    mainFormLayout.addRow("Model:", self.inputModelHierarchySelector)
 
     self.modelNode = None
     #self.inputModelHierarchySelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onModelSelected)
@@ -104,10 +105,10 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.intersectionTable = qt.QTableWidget(1, 4)
     self.intersectionTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
     self.intersectionTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-    self.intersectionTableHeader = ["Model", "Angle 1 (normal)", "Angle 2 (normal)", "Length"]
+    self.intersectionTableHeader = ["Model", "Entry 1", "Entry 2", "Length"]
     self.intersectionTable.setHorizontalHeaderLabels(self.intersectionTableHeader)
     self.intersectionTable.horizontalHeader().setStretchLastSection(True)
-    angleFormLayout.addWidget(self.intersectionTable)
+    mainFormLayout.addWidget(self.intersectionTable)
 
     #
     # Apply Button
@@ -115,7 +116,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.applyButton = qt.QPushButton("Apply")
     self.applyButton.toolTip = "Run the algorithm."
     self.applyButton.enabled = False
-    angleFormLayout.addRow(self.applyButton)
+    mainFormLayout.addRow(self.applyButton)
 
     # connections
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
