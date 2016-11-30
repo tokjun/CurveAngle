@@ -202,7 +202,11 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
 
   def CheckIntersections(self, inputModelHierarchyNode, inputFiducialNode):
     """
-    Run the actual algorithm
+    Look for intersections between the path (inputFiducialNode) and the models under the hierarchy node.
+    Return (objectIDs, objectNames, normalVectors, entryAngles, curvatures, radiusVectors, totalLengthInObject),
+    where the elements are the arrays of object IDs, names, normal vectors at the entry points, angles between the path
+    and the normal vectors, curvatures at the entry points, normal vectors to the center, and the total length of the path
+    in the object.
     """
     if inputModelHierarchyNode == None:
       return None
@@ -266,6 +270,8 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
 
         angles = []
         normals = []
+        curvatures = []
+        radiusNormals = []
 
         surfaceNormals = vtk.vtkPolyDataNormals()
         surfaceNormals.SetInputData(objectTrianglePoly)
@@ -418,6 +424,29 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
             totalLengthInObject.append(lengthInObject)
 
     return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject)
+
+  def ComputeCurvature(self, p1, p2, p3):
+    # Given a curve that runs trhough points p1, p2, and p3, the function calculates
+    # the curvature at p2, and the normal vector to the curve center.
+    # p1, p2, and p3 must be Numpy arrays
+
+    # Curvature
+    v12 = p2 - p1
+    v23 = p3 - p2
+    pT  = v12 / numpy.linalg.norm(v12)
+    ds = numpy.linalg.norm(v23)
+    T  = v23 / ds
+    kappa = numpy.linalg.norm(T-pT) / ds
+
+    # Normal vector
+    v13 = p3 - p1
+    n13 = v13 / numpy.linalg.norm(v13)
+    pr12 = numpy.inner(v12, n13) * n13 # Projection of v12 on n13
+    vc = pr12 - v12
+    nvc = vc / numpy.linalg.norm(vc)
+
+    return (kappa, vc)
+
 
   def ComputeNormal(self, poly, center, radius):
     pass
