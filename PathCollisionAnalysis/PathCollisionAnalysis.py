@@ -102,10 +102,10 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.modelNode = None
     #self.inputModelHierarchySelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onModelSelected)
 
-    self.intersectionTable = qt.QTableWidget(1, 4)
+    self.intersectionTable = qt.QTableWidget(1, 5)
     self.intersectionTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
     self.intersectionTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-    self.intersectionTableHeader = ["Model", "Entry 1", "Entry 2", "Length"]
+    self.intersectionTableHeader = ["Model", "Entry 1", "Entry 2", "Length", "Curvature"]
     self.intersectionTable.setHorizontalHeaderLabels(self.intersectionTableHeader)
     self.intersectionTable.horizontalHeader().setStretchLastSection(True)
     mainFormLayout.addWidget(self.intersectionTable)
@@ -135,6 +135,8 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.normalVectors = None
     self.entryAngles = None
     self.totalLengthInObject = None
+    self.curvatures = None
+    self.radiusNormals = None
 
   def cleanup(self):
     pass
@@ -145,7 +147,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
   def onApplyButton(self):
     logic = PathCollisionAnalysisLogic()
     #logic.EntryAngle(self.inputModelSelector.currentNode(), self.inputFiducialSelector.currentNode())
-    [self.objectIDs, self.objectNames, self.normalVectors, self.entryAngles, self.totalLengthInObject] = logic.CheckIntersections(self.inputModelHierarchySelector.currentNode(), self.inputFiducialSelector.currentNode())
+    [self.objectIDs, self.objectNames, self.normalVectors, self.entryAngles, self.totalLengthInObject, self.curvatures, self.radiusNormals] = logic.CheckIntersections(self.inputModelHierarchySelector.currentNode(), self.inputFiducialSelector.currentNode())
     self.updateIntersectionTable()
 
   def updateIntersectionTable(self):
@@ -161,7 +163,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
         nObjects = len(self.objectIDs)
         self.intersectionTable.setRowCount(nObjects)
         for i in range(nObjects):
-            # "Model", "Entry 1", "Entry 2", "Length"
+            # "Model", "Entry 1", "Entry 2", "Length", "Curvature"
             self.intersectionTable.setItem(i, 0, qt.QTableWidgetItem(self.objectNames[i]))
             angles = self.entryAngles[i]
             normals = self.normalVectors[i]
@@ -176,6 +178,7 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
                     self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem("--"))
 
             self.intersectionTable.setItem(i, 3, qt.QTableWidgetItem("%f" % self.totalLengthInObject[i]))
+            self.intersectionTable.setItem(i, 4, qt.QTableWidgetItem("%f (%f, %f, %f)" % (self.curvatures[i], self.radiusNormals[i][0], self.radiusNormals[i][1], self.radiusNormals[i][2])))
 
     self.intersectionTable.show()
 
@@ -219,6 +222,8 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
     entryAngles = []
     normalVectors = []
     totalLengthInObject = []
+    curvatures = []
+    radiusNormals = []
 
     for i in range(nOfModels):
         chnode = inputModelHierarchyNode.GetNthChildNode(i)
@@ -246,6 +251,7 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
         idList = vtk.vtkIdList()
         pos0 = [0.0] * 3
         pos1 = [0.0] * 3
+        pos2 = [0.0] * 3
 
         nFiducials = inputFiducialNode.GetNumberOfFiducials()
         posStart = None
@@ -270,8 +276,6 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
 
         angles = []
         normals = []
-        curvatures = []
-        radiusNormals = []
 
         surfaceNormals = vtk.vtkPolyDataNormals()
         surfaceNormals.SetInputData(objectTrianglePoly)
@@ -416,6 +420,19 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
                 # entryVec = nTrajVec - normVec
                 #print "  -- Intersecting at (%f, %f, %f) with angle %f and normal vector (%f, %f, %f)" % (p[0], p[1], p[2], angle, normVec[0], normVec[1], normVec[2])
 
+                if j > 0:
+                    inputFiducialNode.GetNthFiducialPosition(j-1, pos2)
+                    # inputFiducialNode.GetNthFiducialPosition(j, pos0)
+                    # inputFiducialNode.GetNthFiducialPosition(j+1, pos1)
+                    (kappa, vc) = self.ComputeCurvature(np.array(pos2), np.array(pos0), np.array(pos1))
+                    curvatures.append(kappa)
+                    radiusNormals.append(vc)
+                else:
+                    inputFiducialNode.GetNthFiducialPosition(j+2, pos2)
+                    (kappa, vc) = self.ComputeCurvature(np.array(pos0), np.array(pos1), np.array(pos2))
+                    curvatures.append(kappa)
+                    radiusNormals.append(vc)
+
         if isInside:
             objectIDs.append(i)
             objectNames.append(name)
@@ -423,7 +440,7 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
             entryAngles.append(angles)
             totalLengthInObject.append(lengthInObject)
 
-    return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject)
+    return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject, curvatures, radiusNormals)
 
   def ComputeCurvature(self, p1, p2, p3):
     # Given a curve that runs trhough points p1, p2, and p3, the function calculates
@@ -433,19 +450,19 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
     # Curvature
     v12 = p2 - p1
     v23 = p3 - p2
-    pT  = v12 / numpy.linalg.norm(v12)
-    ds = numpy.linalg.norm(v23)
+    pT  = v12 / np.linalg.norm(v12)
+    ds = np.linalg.norm(v23)
     T  = v23 / ds
-    kappa = numpy.linalg.norm(T-pT) / ds
+    kappa = np.linalg.norm(T-pT) / ds
 
     # Normal vector
     v13 = p3 - p1
-    n13 = v13 / numpy.linalg.norm(v13)
-    pr12 = numpy.inner(v12, n13) * n13 # Projection of v12 on n13
+    n13 = v13 / np.linalg.norm(v13)
+    pr12 = np.inner(v12, n13) * n13 # Projection of v12 on n13
     vc = pr12 - v12
-    nvc = vc / numpy.linalg.norm(vc)
+    nvc = vc / np.linalg.norm(vc)
 
-    return (kappa, vc)
+    return (kappa, nvc)
 
 
   def ComputeNormal(self, poly, center, radius):
