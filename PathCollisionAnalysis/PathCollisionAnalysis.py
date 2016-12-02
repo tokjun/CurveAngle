@@ -102,10 +102,10 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
     self.modelNode = None
     #self.inputModelHierarchySelector.connect("currentNodeChanged(vtkMRMLNode*)", self.onModelSelected)
 
-    self.intersectionTable = qt.QTableWidget(1, 5)
+    self.intersectionTable = qt.QTableWidget(1, 6)
     self.intersectionTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
     self.intersectionTable.setSelectionMode(qt.QAbstractItemView.SingleSelection)
-    self.intersectionTableHeader = ["Model", "Entry 1", "Entry 2", "Length", "Curvature"]
+    self.intersectionTableHeader = ["Model", "Entry 1", "Entry 2", "Length", "Curvature 1", "Curvature 2"]
     self.intersectionTable.setHorizontalHeaderLabels(self.intersectionTableHeader)
     self.intersectionTable.horizontalHeader().setStretchLastSection(True)
     mainFormLayout.addWidget(self.intersectionTable)
@@ -163,10 +163,12 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
         nObjects = len(self.objectIDs)
         self.intersectionTable.setRowCount(nObjects)
         for i in range(nObjects):
-            # "Model", "Entry 1", "Entry 2", "Length", "Curvature"
+            # "Model", "Entry 1", "Entry 2", "Length", "Curvature 1", "Curvature 2"
             self.intersectionTable.setItem(i, 0, qt.QTableWidgetItem(self.objectNames[i]))
             angles = self.entryAngles[i]
             normals = self.normalVectors[i]
+            curv = self.curvatures[i]
+            radNormals = self.radiusNormals[i]
             nEntry = 2
             if len(angles) < 2:
                 nEntry = 1
@@ -174,12 +176,12 @@ class PathCollisionAnalysisWidget(ScriptedLoadableModuleWidget):
                 if j < nEntry:
                     lb = "%f (%f, %f, %f)" % (angles[j], normals[j][0], normals[j][1], normals[j][2])
                     self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem(lb))
+                    lb = "%f (%f, %f, %f)" % (curv[j], radNormals[j][0], radNormals[j][1], radNormals[j][2])
+                    self.intersectionTable.setItem(i, j+4, qt.QTableWidgetItem(lb))
                 else:
                     self.intersectionTable.setItem(i, j+1, qt.QTableWidgetItem("--"))
-
+                    self.intersectionTable.setItem(i, j+4, qt.QTableWidgetItem("--"))
             self.intersectionTable.setItem(i, 3, qt.QTableWidgetItem("%f" % self.totalLengthInObject[i]))
-            self.intersectionTable.setItem(i, 4, qt.QTableWidgetItem("%f (%f, %f, %f)" % (self.curvatures[i], self.radiusNormals[i][0], self.radiusNormals[i][1], self.radiusNormals[i][2])))
-
     self.intersectionTable.show()
 
 
@@ -222,8 +224,8 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
     entryAngles = []
     normalVectors = []
     totalLengthInObject = []
-    curvatures = []
-    radiusNormals = []
+    curvaturesAtEntry = []
+    radiusNormalsAtEntry = []
 
     for i in range(nOfModels):
         chnode = inputModelHierarchyNode.GetNthChildNode(i)
@@ -276,6 +278,8 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
 
         angles = []
         normals = []
+        curvatures = []
+        radiusNormals = []
 
         surfaceNormals = vtk.vtkPolyDataNormals()
         surfaceNormals.SetInputData(objectTrianglePoly)
@@ -439,8 +443,10 @@ class PathCollisionAnalysisLogic(ScriptedLoadableModuleLogic):
             normalVectors.append(normals)
             entryAngles.append(angles)
             totalLengthInObject.append(lengthInObject)
+            curvaturesAtEntry.append(curvatures)
+            radiusNormalsAtEntry.append(radiusNormals)
 
-    return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject, curvatures, radiusNormals)
+    return (objectIDs, objectNames, normalVectors, entryAngles, totalLengthInObject, curvaturesAtEntry, radiusNormalsAtEntry)
 
   def ComputeCurvature(self, p1, p2, p3):
     # Given a curve that runs trhough points p1, p2, and p3, the function calculates
